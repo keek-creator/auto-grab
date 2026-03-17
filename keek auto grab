@@ -1,12 +1,10 @@
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
-local isTouch = UserInputService.TouchEnabled
 
 local character = player.Character or player.CharacterAdded:Wait()
 local rootPart = character:WaitForChild("HumanoidRootPart")
@@ -17,6 +15,7 @@ local function refreshChar()
     rootPart = character:WaitForChild("HumanoidRootPart")
     humanoid = character:WaitForChild("Humanoid")
 end
+
 player.CharacterAdded:Connect(function()
     task.wait(0.5)
     refreshChar()
@@ -29,7 +28,6 @@ end)
 local gui = Instance.new("ScreenGui")
 gui.Name = "KeekAutoGrab"
 gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = CoreGui
 
 local scale = (UserInputService.TouchEnabled and 0.9 or 1) * 0.65
@@ -125,6 +123,7 @@ progText.TextColor3 = Color3.fromRGB(255,80,80)
 local enabled = false
 local loopActive = false
 
+-- AUTO GRAB LOGIC
 local function getPos(prompt)
     local p = prompt.Parent
     if p:IsA("BasePart") then return p.Position end
@@ -144,6 +143,7 @@ local function findNearestStealPrompt()
     local myPos = rootPart.Position
     local nearest = nil
     local nearestDist = math.huge
+
     for _, plot in ipairs(plots:GetChildren()) do
         for _, obj in ipairs(plot:GetDescendants()) do
             if obj:IsA("ProximityPrompt") and obj.Enabled and obj.ActionText == "Steal" then
@@ -208,6 +208,7 @@ toggle.MouseButton1Click:Connect(function()
             BackgroundColor3 = Color3.fromRGB(120,20,20)
         }):Play()
         tStroke.Transparency = 0
+
         if not loopActive then
             loopActive = true
             task.spawn(grabLoop)
@@ -221,6 +222,7 @@ toggle.MouseButton1Click:Connect(function()
     end
 end)
 
+-- MINIMIZE
 local minimized = false
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
@@ -232,5 +234,47 @@ minBtn.MouseButton1Click:Connect(function()
         content.Visible = true
         minBtn.Text = "-"
         main:TweenSize(UDim2.fromOffset(360*scale,220*scale),"Out","Quad",0.3,true)
+    end
+end)
+
+-- SMOOTH DRAG
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+    or input.UserInputType == Enum.UserInputType.Touch then
+        
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+titleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement 
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        
+        main.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
     end
 end)
