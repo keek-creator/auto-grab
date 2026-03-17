@@ -1,0 +1,236 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local isTouch = UserInputService.TouchEnabled
+
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+
+local function refreshChar()
+    character = player.Character or player.CharacterAdded:Wait()
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    humanoid = character:WaitForChild("Humanoid")
+end
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    refreshChar()
+end)
+
+pcall(function()
+    CoreGui:FindFirstChild("KeekAutoGrab"):Destroy()
+end)
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "KeekAutoGrab"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = CoreGui
+
+local scale = (UserInputService.TouchEnabled and 0.9 or 1) * 0.65
+
+local main = Instance.new("Frame")
+main.Size = UDim2.fromOffset(360*scale,220*scale)
+main.Position = UDim2.fromScale(0.5,0.32)
+main.AnchorPoint = Vector2.new(0.5,0)
+main.BackgroundColor3 = Color3.fromRGB(35,10,10)
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = gui
+Instance.new("UICorner",main).CornerRadius = UDim.new(0,22*scale)
+
+local stroke = Instance.new("UIStroke",main)
+stroke.Color = Color3.fromRGB(255,60,60)
+stroke.Thickness = 2
+stroke.Transparency = 0.15
+
+local gradient = Instance.new("UIGradient",main)
+gradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(60,10,10)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(20,5,5))
+}
+
+local titleBar = Instance.new("Frame",main)
+titleBar.Size = UDim2.new(1,0,0,50*scale)
+titleBar.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel",titleBar)
+title.Size = UDim2.new(1,-110*scale,1,0)
+title.Position = UDim2.new(0,15*scale,0,0)
+title.BackgroundTransparency = 1
+title.Text = "Keek Auto Grab"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16*scale
+title.TextColor3 = Color3.fromRGB(255,120,120)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local minBtn = Instance.new("TextButton",titleBar)
+minBtn.Size = UDim2.fromOffset(30*scale,30*scale)
+minBtn.Position = UDim2.new(1,-40*scale,0.5,-15*scale)
+minBtn.BackgroundColor3 = Color3.fromRGB(60,20,20)
+minBtn.Text = "-"
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 18*scale
+minBtn.TextColor3 = Color3.fromRGB(255,120,120)
+minBtn.AutoButtonColor = false
+Instance.new("UICorner",minBtn).CornerRadius = UDim.new(1,0)
+
+local content = Instance.new("Frame",main)
+content.Size = UDim2.new(1,-30*scale,1,-70*scale)
+content.Position = UDim2.new(0,15*scale,0,55*scale)
+content.BackgroundTransparency = 1
+
+local toggle = Instance.new("TextButton",content)
+toggle.Size = UDim2.fromOffset(200*scale,50*scale)
+toggle.Position = UDim2.new(0.5,-100*scale,0.25,-25*scale)
+toggle.BackgroundColor3 = Color3.fromRGB(40,15,15)
+toggle.Text = "Disabled"
+toggle.Font = Enum.Font.GothamBold
+toggle.TextSize = 20*scale
+toggle.TextColor3 = Color3.fromRGB(255,150,150)
+toggle.AutoButtonColor = false
+Instance.new("UICorner",toggle).CornerRadius = UDim.new(0,16*scale)
+
+local tStroke = Instance.new("UIStroke",toggle)
+tStroke.Color = Color3.fromRGB(255,60,60)
+tStroke.Transparency = 0.4
+
+local progContainer = Instance.new("Frame",content)
+progContainer.Size = UDim2.new(0.9,0,0,14*scale)
+progContainer.Position = UDim2.new(0.05,0,0.65,0)
+progContainer.BackgroundColor3 = Color3.fromRGB(40,15,15)
+progContainer.BorderSizePixel = 0
+progContainer.Visible = false
+Instance.new("UICorner",progContainer).CornerRadius = UDim.new(1,0)
+
+local progFill = Instance.new("Frame",progContainer)
+progFill.Size = UDim2.new(0,0,1,0)
+progFill.BackgroundColor3 = Color3.fromRGB(255,60,60)
+progFill.BorderSizePixel = 0
+Instance.new("UICorner",progFill).CornerRadius = UDim.new(1,0)
+
+local progText = Instance.new("TextLabel",progContainer)
+progText.Size = UDim2.new(1,0,0,20*scale)
+progText.Position = UDim2.new(0,0,0,16*scale)
+progText.BackgroundTransparency = 1
+progText.Font = Enum.Font.GothamBold
+progText.TextSize = 14*scale
+progText.TextColor3 = Color3.fromRGB(255,80,80)
+
+local enabled = false
+local loopActive = false
+
+local function getPos(prompt)
+    local p = prompt.Parent
+    if p:IsA("BasePart") then return p.Position end
+    if p:IsA("Model") then
+        local prim = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+        return prim and prim.Position
+    end
+    if p:IsA("Attachment") then return p.WorldPosition end
+    local part = p:FindFirstChildWhichIsA("BasePart", true)
+    return part and part.Position
+end
+
+local function findNearestStealPrompt()
+    if not rootPart then return nil end
+    local plots = Workspace:FindFirstChild("Plots")
+    if not plots then return nil end
+    local myPos = rootPart.Position
+    local nearest = nil
+    local nearestDist = math.huge
+    for _, plot in ipairs(plots:GetChildren()) do
+        for _, obj in ipairs(plot:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") and obj.Enabled and obj.ActionText == "Steal" then
+                local pos = getPos(obj)
+                if pos then
+                    local dist = (myPos - pos).Magnitude
+                    if dist <= obj.MaxActivationDistance and dist < nearestDist then
+                        nearest = obj
+                        nearestDist = dist
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function firePrompt(prompt)
+    if not prompt then return end
+    task.spawn(function()
+        pcall(function()
+            fireproximityprompt(prompt, 10000)
+            prompt:InputHoldBegin()
+            task.wait(0.04)
+            prompt:InputHoldEnd()
+        end)
+    end)
+end
+
+local function indicateGrab()
+    progContainer.Visible = true
+    toggle.Visible = false
+    progFill:TweenSize(UDim2.new(1,0,1,0), "Out", "Quad", 0.15, true)
+    progText.Text = "GRAB"
+    task.wait(0.15)
+    progFill.Size = UDim2.new(0,0,1,0)
+    progText.Text = ""
+    progContainer.Visible = false
+    toggle.Visible = true
+end
+
+local function grabLoop()
+    while enabled do
+        if humanoid and humanoid.WalkSpeed > 29 then
+            local nearest = findNearestStealPrompt()
+            if nearest then
+                task.wait(0.07)
+                firePrompt(nearest)
+                indicateGrab()
+            end
+        end
+        task.wait(0.3)
+    end
+    loopActive = false
+end
+
+toggle.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    if enabled then
+        toggle.Text = "Enabled"
+        TweenService:Create(toggle,TweenInfo.new(0.25),{
+            BackgroundColor3 = Color3.fromRGB(120,20,20)
+        }):Play()
+        tStroke.Transparency = 0
+        if not loopActive then
+            loopActive = true
+            task.spawn(grabLoop)
+        end
+    else
+        toggle.Text = "Disabled"
+        TweenService:Create(toggle,TweenInfo.new(0.25),{
+            BackgroundColor3 = Color3.fromRGB(40,15,15)
+        }):Play()
+        tStroke.Transparency = 0.4
+    end
+end)
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        content.Visible = false
+        minBtn.Text = "+"
+        main:TweenSize(UDim2.fromOffset(360*scale,50*scale),"Out","Quad",0.3,true)
+    else
+        content.Visible = true
+        minBtn.Text = "-"
+        main:TweenSize(UDim2.fromOffset(360*scale,220*scale),"Out","Quad",0.3,true)
+    end
+end)
