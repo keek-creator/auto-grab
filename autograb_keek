@@ -1,0 +1,269 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local GRAB_RADIUS = 7 
+local COOLDOWN_TIME = 0.8 
+local LastGrabTime = 0
+
+-- Remove old GUI
+if CoreGui:FindFirstChild("AutoGrabGui") then 
+    CoreGui.AutoGrabGui:Destroy() 
+end
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "AutoGrabGui"
+sg.ResetOnSpawn = false
+sg.Parent = CoreGui
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 250, 0, 210)
+mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0) 
+mainFrame.BackgroundTransparency = 0.06
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = sg
+
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "AUTO GRAB"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 18
+title.Font = Enum.Font.GothamBlack
+title.Parent = mainFrame
+
+-- Small subtitle (keek)
+local subTitle = Instance.new("TextLabel")
+subTitle.Size = UDim2.new(1, 0, 0, 12)
+subTitle.Position = UDim2.new(0, 0, 0, 25)
+subTitle.BackgroundTransparency = 1
+subTitle.Text = "keek"
+subTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+subTitle.TextSize = 9
+subTitle.Font = Enum.Font.GothamMedium
+subTitle.Parent = mainFrame
+
+-- Divider
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(0.85, 0, 0, 1)
+divider.Position = UDim2.new(0.075, 0, 0, 40)
+divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+divider.BackgroundTransparency = 0.6
+divider.BorderSizePixel = 0
+divider.Parent = mainFrame
+
+-- Discord Tag
+local discordTag = Instance.new("TextLabel")
+discordTag.Size = UDim2.new(1, 0, 0, 15)
+discordTag.Position = UDim2.new(0, 0, 0, 42)
+discordTag.BackgroundTransparency = 1
+discordTag.Text = "https://discord.gg/ydZKYCN4w"
+discordTag.TextColor3 = Color3.fromRGB(150, 150, 150)
+discordTag.TextSize = 10
+discordTag.Font = Enum.Font.GothamMedium
+discordTag.Parent = mainFrame
+
+-- Manual Grab Button
+local grabButton = Instance.new("TextButton")
+grabButton.Size = UDim2.new(0.85, 0, 0, 40)
+grabButton.Position = UDim2.new(0.5, 0, 0, 90)
+grabButton.AnchorPoint = Vector2.new(0.5, 0.5)
+grabButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+grabButton.Text = "INSTANT GRAB"
+grabButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+grabButton.TextSize = 14
+grabButton.Font = Enum.Font.GothamBold
+grabButton.AutoButtonColor = false
+grabButton.Parent = mainFrame
+Instance.new("UICorner", grabButton).CornerRadius = UDim.new(0, 8)
+
+-- Auto Grab Button
+local autoButton = Instance.new("TextButton")
+autoButton.Size = UDim2.new(0.85, 0, 0, 40)
+autoButton.Position = UDim2.new(0.5, 0, 0, 140)
+autoButton.AnchorPoint = Vector2.new(0.5, 0.5)
+autoButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+autoButton.Text = "AUTO GRAB: OFF"
+autoButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+autoButton.TextSize = 14
+autoButton.Font = Enum.Font.GothamBold
+autoButton.AutoButtonColor = false
+autoButton.Parent = mainFrame
+Instance.new("UICorner", autoButton).CornerRadius = UDim.new(0, 8)
+
+-- Status
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, 0, 0, 20)
+status.Position = UDim2.new(0, 0, 0, 185)
+status.BackgroundTransparency = 1
+status.Text = "Ready"
+status.TextColor3 = Color3.fromRGB(180, 180, 180)
+status.TextSize = 12
+status.Font = Enum.Font.GothamMedium
+status.Parent = mainFrame
+
+-- RED OUTLINE
+local uiStroke = Instance.new("UIStroke", mainFrame)
+uiStroke.Thickness = 2.5
+uiStroke.Color = Color3.fromRGB(255, 0, 0)
+
+---------------------------------------------------------
+-- CLICK EFFECT
+---------------------------------------------------------
+local function playClickEffect(btn)
+    local originalSize = btn.Size
+    TweenService:Create(btn, TweenInfo.new(0.1), {
+        BackgroundColor3 = Color3.fromRGB(180, 180, 180),
+        Size = UDim2.new(originalSize.X.Scale * 0.95, 0, 0, originalSize.Y.Offset - 4)
+    }):Play()
+    task.wait(0.1)
+    TweenService:Create(btn, TweenInfo.new(0.1), {
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        Size = originalSize
+    }):Play()
+end
+
+---------------------------------------------------------
+-- LOGIC (UNCHANGED)
+---------------------------------------------------------
+local IsStealing = false
+local InternalStealCache = {}
+local PromptMemoryCache = {}
+local allAnimalsCache = {}
+local AutoGrabEnabled = false
+
+local function getHRP()
+    local char = player.Character
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso"))
+end
+
+local function scanSinglePlot(plot)
+    if not plot or not plot:IsA("Model") then return end
+    local podiums = plot:FindFirstChild("AnimalPodiums")
+    if not podiums then return end
+    for _, podium in ipairs(podiums:GetChildren()) do
+        if podium:IsA("Model") and podium:FindFirstChild("Base") then
+            table.insert(allAnimalsCache, {
+                plot = plot.Name,
+                slot = podium.Name,
+                worldPosition = podium:GetPivot().Position,
+                uid = plot.Name .. "_" .. podium.Name,
+            })
+        end
+    end
+end
+
+local function initializeScanner()
+    task.wait(2)
+    local plots = workspace:WaitForChild("Plots", 10)
+    for _, plot in ipairs(plots:GetChildren()) do scanSinglePlot(plot) end
+    plots.ChildAdded:Connect(scanSinglePlot)
+end
+
+local function findPrompt(animal)
+    local cached = PromptMemoryCache[animal.uid]
+    if cached and cached.Parent then return cached end
+    local plot = workspace.Plots:FindFirstChild(animal.plot)
+    local podium = plot and plot.AnimalPodiums:FindFirstChild(animal.slot)
+    local prompt = podium and podium.Base.Spawn.PromptAttachment:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then PromptMemoryCache[animal.uid] = prompt end
+    return prompt
+end
+
+local function buildStealCallbacks(prompt)
+    if InternalStealCache[prompt] then return end
+    local data = { holdCallbacks = {}, triggerCallbacks = {}, ready = true }
+    local ok1, conns1 = pcall(getconnections, prompt.PromptButtonHoldBegan)
+    if ok1 then for _, c in ipairs(conns1) do table.insert(data.holdCallbacks, c.Function) end end
+    local ok2, conns2 = pcall(getconnections, prompt.Triggered)
+    if ok2 then for _, c in ipairs(conns2) do table.insert(data.triggerCallbacks, c.Function) end end
+    InternalStealCache[prompt] = data
+end
+
+local function executeInstantSteal(prompt)
+    if (os.clock() - LastGrabTime) < COOLDOWN_TIME then return end
+    
+    local data = InternalStealCache[prompt]
+    if not data or IsStealing then return end
+    
+    IsStealing = true
+    LastGrabTime = os.clock()
+    
+    task.spawn(function()
+        for _, fn in ipairs(data.holdCallbacks) do task.spawn(fn) end
+        for _, fn in ipairs(data.triggerCallbacks) do task.spawn(fn) end
+        
+        status.Text = "Grabbed!"
+        task.wait(COOLDOWN_TIME)
+        IsStealing = false
+        status.Text = "Ready"
+    end)
+end
+
+local function getNearestAnimal()
+    local hrp = getHRP()
+    if not hrp then return nil end
+    local nearest, dist = nil, math.huge
+    for _, animal in ipairs(allAnimalsCache) do
+        local d = (hrp.Position - animal.worldPosition).Magnitude
+        if d < dist and d <= GRAB_RADIUS then
+            dist = d
+            nearest = animal
+        end
+    end
+    return nearest
+end
+
+-- Button Triggers
+grabButton.MouseButton1Click:Connect(function()
+    task.spawn(playClickEffect, grabButton)
+    if IsStealing or (os.clock() - LastGrabTime < COOLDOWN_TIME) then return end
+    local animal = getNearestAnimal()
+    if animal then
+        local prompt = findPrompt(animal)
+        if prompt then
+            buildStealCallbacks(prompt)
+            executeInstantSteal(prompt)
+        end
+    end
+end)
+
+autoButton.MouseButton1Click:Connect(function()
+    AutoGrabEnabled = not AutoGrabEnabled
+    task.spawn(playClickEffect, autoButton)
+    autoButton.Text = AutoGrabEnabled and "AUTO GRAB: ON" or "AUTO GRAB: OFF"
+end)
+
+-- AUTO LOOP
+task.spawn(function()
+    while true do
+        task.wait(0.01)
+        if AutoGrabEnabled and not IsStealing and (os.clock() - LastGrabTime >= COOLDOWN_TIME) then
+            local animal = getNearestAnimal()
+            if animal then
+                task.wait(0.1) 
+                local recheck = getNearestAnimal()
+                if recheck and recheck.uid == animal.uid then
+                    local prompt = findPrompt(recheck)
+                    if prompt then
+                        buildStealCallbacks(prompt)
+                        executeInstantSteal(prompt)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+initializeScanner()
